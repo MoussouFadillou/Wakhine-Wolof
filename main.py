@@ -1,105 +1,114 @@
+import io
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-import os
-import uuid
-import csv
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+from google.oauth2 import service_account
+import uvicorn
 
-app = FastAPI(
-    title="Kalama Wolof API",
-    description="Moteur de gestion sécurisé pour la collecte de données ASR Wolof",
-    version="1.4.1"
-)
+app = FastAPI(title="Kalama Wolof API - Google Drive Version")
 
+# 1. CONFIGURATION SÉCURITÉ (CORS)
+# Permet à ton frontend (Vercel ou local) de communiquer avec ce backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # En production, tu pourras remplacer par ton lien Vercel unique
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "kalama_dataset_wav"
-CSV_FILE_PATH = "kalama_dataset.csv"
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
-def append_to_kalama_csv(metadata: dict):
-    # Uniquement les données sociolinguistiques essentielles pour la thèse
-    fieldnames = ["audio_path", "transcript", "region", "accent", "gender", "age", "literacy", "speech_type"]
-    file_exists = os.path.isfile(CSV_FILE_PATH)
-
-    with open(CSV_FILE_PATH, mode="a", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(metadata)
+# 2. CONFIGURATION GOOGLE DRIVE
+# Remplace 'ID_DE_TON_DOSSIER_DRIVE' par l'identifiant réel de ton dossier de thèse sur Drive
+GOOGLE_DRIVE_FOLDER_ID = "ID_DE_TON_DOSSIER_DRIVE"
+SERVICE_ACCOUNT_FILE = "credentials.json"  # Ton fichier de clé secrète Google Cloud
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
+def get_drive_service():
+    """Connexion sécurisée à l'API Google Drive via le compte de service."""
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
+        return build("drive", "v3", credentials=creds)
+    except Exception as e:
+        print(f"Erreur de connexion Google API : {e}")
+        return None
+
+
+# 3. ROUTE UNIQUE DE COLLECTE AUDIO
 @app.post("/api/collecte")
 async def collect_voice(
-        audio: UploadFile = File(...),
-        transcript: str = Form(...),
-        region: str = Form(...),
-        accent: str = Form(...),
-        gender: str = Form(...),
-        age: int = Form(...),
-        literacy: str = Form(...),
-        speech_type: str = Form(...),
-        secret_key: str = Form(...)
+    audio: UploadFile = File(...),
+    transcript: str = Form(...),
+    region: str = Form(...),
+    accent: str = Form(...),
+    gender: str = Form(...),
+    age: int = Form(...),
+    speech_type: str = Form(...),
+    secret_key: str = Form(...),
 ):
+    # Sécurité : Garde-fou pour éviter le spam anonyme
     if secret_key != "WOLOF2026":
-        raise HTTPException(status_code=403, detail="Accès refusé. Clé invalide.")
+        raise HTTPException(
+            status_code=403, detail="Clé de sécurité Kalama non valide."
+        )
 
-    if not audio.filename.lower().endswith(('.wav', '.blob')):
-        raise HTTPException(status_code=400, detail="Format audio non valide.")
-
-    audio_content = await audio.read()
-    if len(audio_content) == 0:
-        raise HTTPException(status_code=400, detail="Échantillon audio vide.")
-
-    if len(audio_content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Fichier trop lourd (Max 5 Mo).")
-
-    unique_filename = f"{uuid.uuid4()}.wav"
-    relative_audio_path = os.path.join(UPLOAD_DIR, unique_filename)
+    # Initialisation du service Google Drive
+    drive_service = get_drive_service()
+    if not drive_service:
+        raise HTTPException(
+            status_code=500,
+            detail="Impossible de se connecter au stockage Google Drive.",
+        )
 
     try:
-        with open(relative_audio_path, "wb") as buffer:
-            buffer.write(audio_content)
+        # Lire le contenu binaire de l'audio envoyé par le smartphone
+        audio_content = await audio.read()
+
+        # Configurer le nom du fichier sur Google Drive (Nom d'origine envoyé par le front)
+        file_metadata = {
+            "name": audio.filename,
+            "parents": [GOOGLE_DRIVE_FOLDER_ID],  # Destination dans ton Drive
+        }
+
+        # Préparer le flux binaire pour l'upload direct (sans écriture sur le disque Render)
+        media = MediaIoBaseUpload(
+            io.BytesIO(audio_content), mimetype="audio/wav", resumable=True
+        )
+
+        # Exécuter l'envoi vers Google Drive
+        drive_file = (
+            drive_service.files()
+            .create(body=file_metadata, media_body=media, fields="id")
+            .execute()
+        )
+        drive_file_id = drive_file.get("id")
+
+        # --- GESTION DES MÉTADONNÉES (CSV ou LOG) ---
+        # Note pour ta thèse : Puisque le disque Render s'efface, nous affichons les données
+        # dans les logs du serveur. Pour l'avenir, ces lignes alimenteront directement
+        # un fichier Google Sheets en ligne ou une base Supabase.
+        print(f"--- NOUVEL ENREGISTREMENT SYNC DRIVE ({drive_file_id}) ---")
+        print(
+            f"Fichier : {audio.filename} | Texte : {transcript} | Région : {region} ({accent})"
+        )
+        print(f"Profil : {gender} | Âge : {age} ans | Type : {speech_type}")
+
+        return {
+            "status": "success",
+            "message": "Audio sauvegardé avec succès sur Google Drive !",
+            "drive_file_id": drive_file_id,
+        }
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur d'écriture : {str(e)}")
-
-    metadata_row = {
-        "audio_path": relative_audio_path,
-        "transcript": transcript,
-        "region": region,
-        "accent": accent,
-        "gender": gender,
-        "age": age,
-        "literacy": literacy,
-        "speech_type": speech_type
-    }
-
-    try:
-        append_to_kalama_csv(metadata_row)
-    except Exception as e:
-        if os.path.exists(relative_audio_path):
-            os.remove(relative_audio_path)
-        raise HTTPException(status_code=500, detail=f"Erreur CSV : {str(e)}")
-
-    return {"status": "success", "audio_path": relative_audio_path}
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur lors de la transmission vers Google Drive : {str(e)}",
+        )
 
 
-@app.get("/api/download-csv")
-async def download_dataset_csv():
-    if not os.path.isfile(CSV_FILE_PATH):
-        raise HTTPException(status_code=404, detail="Le fichier CSV n'existe pas.")
-    return FileResponse(path=CSV_FILE_PATH, filename="kalama_dataset.csv", media_type="text/csv")
-
-
+# Lancement du serveur (Utile pour tes tests locaux)
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
