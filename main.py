@@ -6,7 +6,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2 import service_account
 import uvicorn
 
-app = FastAPI(title="Kalama Wolof API - Google Drive Version")
+app = FastAPI(title="Wakhine Wolof API - Google Drive Version")
 
 # 1. CONFIGURATION SÉCURITÉ (CORS)
 # Permet à ton frontend (Vercel ou local) de communiquer avec ce backend
