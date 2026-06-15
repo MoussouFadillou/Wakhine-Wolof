@@ -12,15 +12,18 @@ app = FastAPI(title="Wakhine Wolof API - Google Drive Version")
 # Permet à ton frontend (Vercel ou local) de communiquer avec ce backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En production, tu pourras remplacer par ton lien Vercel unique
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:5173",               # Pour tes tests sur ton PC
+        "https://wakhine-wolof-frontend-qfq4.vercel.app/"  # Remplace par ton VRAI lien Vercel
+    ],
+    allow_credentials=True, # Autorisé car la liste des origines est précise
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # 2. CONFIGURATION GOOGLE DRIVE
 # Remplace 'ID_DE_TON_DOSSIER_DRIVE' par l'identifiant réel de ton dossier de thèse sur Drive
-GOOGLE_DRIVE_FOLDER_ID = "ID_DE_TON_DOSSIER_DRIVE"
+GOOGLE_DRIVE_FOLDER_ID = "1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ"
 SERVICE_ACCOUNT_FILE = "credentials.json"  # Ton fichier de clé secrète Google Cloud
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
