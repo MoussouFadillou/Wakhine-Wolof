@@ -5,9 +5,8 @@ from typing import List, Optional
 import json
 import os
 
-app = FastAPI(title="Wakhin Wolof API - Régions du Sénégal")
+app = FastAPI(title="Wakhin Wolof API Sécurisée")
 
-# Configuration des CORS pour autoriser ton Frontend Vercel sans blocage
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,23 +15,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Le modèle attend maintenant le code de sécurité du frontend
 class RegionForm(BaseModel):
     wolof: str
     audioUrl: Optional[str] = ""
+    codeSecurite: str  # 👈 Ajout du champ pour la sécurité
 
 FICHIER_SAUVEGARDE = "regions_wolof.json"
+CODE_SECRET_ATTENDU = "SENEGAL2026"  # 👈 C'est le code magique pour pouvoir enregistrer !
 
-# Base de données de départ avec l'orthographe officielle en Wolof
 def charger_donnees():
     if os.path.exists(FICHIER_SAUVEGARDE):
         with open(FICHIER_SAUVEGARDE, "r", encoding="utf-8") as f:
             return json.load(f)
     return [
         {"id": 1, "wolof": "Ndakaaru", "audioUrl": ""},
-        {"id": 2, "wolof": "Cees", "audioUrl": ""},
-        {"id": 3, "wolof": "Ndar", "audioUrl": ""},
-        {"id": 4, "wolof": "Ndoxum Ngéej", "audioUrl": ""},
-        {"id": 5, "wolof": "Géejawaay", "audioUrl": ""}
+        {"id": 2, "wolof": "Cees", "audioUrl": ""}
     ]
 
 def sauvegarder_donnees(donnees):
@@ -45,11 +43,17 @@ def obtenir_toutes_les_regions():
 
 @app.post("/api/mots", status_code=201)
 def ajouter_une_region(region: RegionForm):
+    # 🔐 VERIFICATION DU CODE DE SÉCURITÉ
+    if region.codeSecurite != CODE_SECRET_ATTENDU:
+        raise HTTPException(
+            status_code=403, 
+            detail="Code de sécurité incorrect. Vous n'avez pas les droits d'enregistrement."
+        )
+
     try:
         liste_actuelle = charger_donnees()
         lien_audio = region.audioUrl.strip() if region.audioUrl else ""
         
-        # Transformation magique du lien Google Drive pour la lecture directe
         if "drive.google.com" in lien_audio and "/view" in lien_audio:
             if "/file/d/" in lien_audio:
                 id_drive = lien_audio.split("/file/d/")[1].split("/view")[0]
@@ -72,4 +76,4 @@ def ajouter_une_region(region: RegionForm):
 
 @app.get("/")
 def racine():
-    return {"statut": "Serveur Wolof opérationnel sur Render"}
+    return {"statut": "Serveur sécurisé opérationnel"}
