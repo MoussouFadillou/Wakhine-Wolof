@@ -53,7 +53,7 @@ def ajouter_une_region(region: RegionForm):
         if "drive.google.com" in lien_audio and "/view" in lien_audio:
             if "/file/d/" in lien_audio:
                 id_drive = lien_audio.split("/file/d/")[1].split("/view")[0]
-                lien_audio = f"https://docs.google.com/uc?export=download&id={1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ}"
+                lien_audio = f"https://docs.google.com/uc?export=download&id={id_drive}"
 
         prochain_id = max([r["id"] for r in liste_actuelle], default=0) + 1
 
