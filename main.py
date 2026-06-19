@@ -10,7 +10,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 🚀 Initialisation de l'application FastAPI (c'est ce 'app' que Gunicorn/Uvicorn cherche)
+# 🚀 Initialisation de l'application FastAPI (Recherchée par Gunicorn/Uvicorn sur Render)
 app = FastAPI(title="Wakhin Wolof - API de Collecte")
 
 # 🌍 Configuration CORS essentielle pour communiquer avec ton site Vercel
@@ -24,35 +24,30 @@ app.add_middleware(
 
 FICHIER_SAUVEGARDE = "collecte_wolof.json"
 
-# 🟢 Ton identifiant de dossier Google Drive
+# 🟢 METS TON PROPRE ID DE DOSSIER GOOGLE DRIVE ICI
 ID_DOSSIER_DRIVE = "1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ"
 
 def obtenir_service_drive():
-    # Récupération sécurisée des variables d'environnement configurées sur Render
-    client_email = os.getenv("GOOGLE_CLIENT_EMAIL")
-    project_id = os.getenv("GOOGLE_PROJECT_ID")
-    private_key = os.getenv("GOOGLE_PRIVATE_KEY")
+    # On force l'utilisation UNIQUE du fichier Secret File de Render
+    chemin_credentials = "credentials.json"
     
-    if not client_email or not private_key:
+    if not os.path.exists(chemin_credentials):
         raise HTTPException(
             status_code=500, 
-            detail="Les variables d'environnement Google (EMAIL ou KEY) sont manquantes sur Render."
+            detail="Le fichier credentials.json est introuvable. Vérifie l'onglet Secret Files sur Render."
         )
     
-    # Nettoyage magique de la clé privée pour éviter le bug de signature JWT
-    p_key = private_key.replace("\\n", "\n")
-    
-    info_credentials = {
-        "type": "service_account",
-        "project_id": project_id,
-        "private_key": p_key,
-        "client_email": client_email,
-        "token_uri": "https://oauth2.googleapis.com/token",
-    }
-    
     scopes = ['https://www.googleapis.com/auth/drive']
-    creds = service_account.Credentials.from_service_account_info(info_credentials, scopes=scopes)
-    return build('drive', 'v3', credentials=creds)
+    
+    # Google lit directement le fichier physique pour éviter TOUT bug de signature JWT
+    try:
+        creds = service_account.Credentials.from_service_account_file(chemin_credentials, scopes=scopes)
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur de lecture du fichier credentials : {str(e)}"
+        )
 
 def charger_donnees():
     if os.path.exists(FICHIER_SAUVEGARDE):
@@ -67,7 +62,7 @@ def sauvegarder_donnees(donnees):
     with open(FICHIER_SAUVEGARDE, "w", encoding="utf-8") as f:
         json.dump(donnees, f, ensure_ascii=False, indent=4)
 
-# 1. ROUTE DE VÉRIFICATION
+# 1. ROUTE DE VÉRIFICATION SUR NAVIGATEUR
 @app.get("/")
 def home():
     return {"statut": "Le serveur de thèse fonctionne et est connecté avec succès ! 🇸🇳"}
@@ -77,14 +72,14 @@ def home():
 def obtenir_contributions():
     return charger_donnees()
 
-# 3. ROUTE EXPORT EXCEL (CSV) : AVEC COLONNE TRANSCRIPTION
+# 3. ROUTE EXPORT EXCEL (CSV) : SYNCHRONISÉE AVEC LA TRANSCRIPTION
 @app.get("/api/contributions/csv")
 def exporter_csv():
     donnees = charger_donnees()
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
     
-    # En-têtes complets pour tes analyses statistiques de thèse
+    # En-têtes complets pour tes analyses de thèse
     writer.writerow([
         "ID", "Age", "Sexe", "Region", "Departement", 
         "Accent_Regional", "Niveau_Alphabetisation", 
@@ -105,7 +100,7 @@ def exporter_csv():
         headers={"Content-Disposition": "attachment; filename=corpus_wakhin_wolof.csv"}
     )
 
-# 4. ROUTE ENREGISTREMENT (METADONNÉES + AUDIO MICRO + TRANSCRIPTION)
+# 4. ROUTE PRINCIPALE : RÉCEPTION AUDIO + MÉTADONNÉES + ENVOI DRIVE
 @app.post("/api/contribuer", status_code=201)
 async def ajouter_contribution(
     age: int = Form(...),
@@ -122,28 +117,28 @@ async def ajouter_contribution(
     try:
         service = obtenir_service_drive()
         
-        # Écriture temporaire de l'audio reçu sur le serveur
+        # Écriture temporaire du fichier audio reçu sur le disque de Render
         contenu_audio = await audioFile.read()
         with open(chemin_temporaire, "wb") as f_temp:
             f_temp.write(contenu_audio)
             
-        # Métadonnées et nommage du fichier audio pour ton Drive
+        # Formatage propre du nom du fichier pour ton Google Drive
         nom_fichier_propre = f"{region}_{departement}_{type_parole.replace(' ', '_')}_{audioFile.filename}"
         file_metadata = {
             'name': nom_fichier_propre,
             'parents': [ID_DOSSIER_DRIVE]
         }
         
-        # Envoi sécurisé via un fichier physique stable
+        # Transfert vers Google Drive
         media = MediaFileUpload(chemin_temporaire, mimetype=audioFile.content_type, resumable=True)
         fichier_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         id_fichier = fichier_drive.get('id')
         
-        # Attribution des droits de lecture pour pouvoir écouter l'audio depuis ton tableau Excel
+        # Rendre l'audio lisible par un lien public dans ton Excel
         service.permissions().create(fileId=id_fichier, body={'type': 'anyone', 'role': 'reader'}).execute()
         lien_audio_direct = f"https://docs.google.com/uc?export=download&id={id_fichier}"
 
-        # Sauvegarde synchrone dans la base locale JSON
+        # Enregistrement dans la base locale JSON du serveur
         liste_contributions = charger_donnees()
         nouvelle_entree = {
             "id": len(liste_contributions) + 1,
@@ -167,6 +162,6 @@ async def ajouter_contribution(
         raise HTTPException(status_code=500, detail=f"Erreur d'envoi : {str(e)}")
         
     finally:
-        # Nettoyage automatique du fichier temporaire sur Render
+        # Nettoyage strict du fichier temporaire pour ne pas saturer le serveur
         if os.path.exists(chemin_temporaire):
             os.remove(chemin_temporaire)
