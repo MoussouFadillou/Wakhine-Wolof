@@ -1,89 +1,3 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-import json
-import os
-import csv
-import io
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-
-app = FastAPI(title="Wakhin Wolof - API Officielle de Thèse")
-
-# 🌍 Configuration CORS complète pour la liaison avec Vercel
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-FICHIER_SAUVEGARDE = "collecte_wolof.json"
-ID_DOSSIER_DRIVE = "1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ"
-
-def obtenir_service_drive():
-    chemin_credentials = "credentials.json"
-    if not os.path.exists(chemin_credentials):
-        raise HTTPException(status_code=500, detail="Le fichier credentials.json est introuvable.")
-    
-    scopes = ['https://www.googleapis.com/auth/drive']
-    try:
-        with open(chemin_credentials, "r", encoding="utf-8") as f:
-            info_credentials = json.load(f)
-        
-        p_key = info_credentials["private_key"].strip().strip('"').strip("'").replace("\\n", "\n")
-        info_credentials["private_key"] = p_key
-        
-        creds = service_account.Credentials.from_service_account_info(info_credentials, scopes=scopes)
-        return build('drive', 'v3', credentials=creds)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur credentials Google : {str(e)}")
-
-def charger_donnees():
-    if os.path.exists(FICHIER_SAUVEGARDE):
-        with open(FICHIER_SAUVEGARDE, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except:
-                return []
-    return []
-
-# 1. PAGE D'ACCUEIL DU SERVEUR (Pour tester sur le navigateur)
-@app.get("/")
-async def root():
-    return {"statut": "Le serveur backend Wakhin Wolof fonctionne à 100% ! 🇸🇳"}
-
-# 2. EXPORTATION DU CSV MIS À JOUR POUR EXCEL (Ton bouton de téléchargement)
-@app.get("/api/contributions/csv")
-async def exporter_csv():
-    donnees = charger_donnees()
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=';')
-    
-    # En-têtes mis à jour avec tes critères exacts de thèse
-    writer.writerow([
-        "ID", "Age", "Sexe", "Region", "Departement", 
-        "Accent_Regional", "Niveau_Alphabetisation", 
-        "Type_Parole", "Texte_Transcription", "Lien_Vocal_Drive"
-    ])
-    
-    for row in donnees:
-        writer.writerow([
-            row.get("id"), row.get("age"), row.get("sexe"), row.get("region"),
-            row.get("departement"), row.get("accent"), row.get("alphabetisation"),
-            row.get("type_parole"), row.get("transcription"), row.get("audioUrl")
-        ])
-    
-    output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode('utf-8-sig')),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=corpus_wakhin_wolof.csv"}
-    )
-
-# 3. ENREGISTREMENT ET RECEPTION DE L'AUDIO DU MICRO
 @app.post("/api/contribuer")
 async def ajouter_contribution(
     age: int = Form(...),
@@ -93,19 +7,17 @@ async def ajouter_contribution(
     accent: str = Form(...),
     alphabetisation: str = Form(...),
     type_parole: str = Form(...),
-    transcription: str = Form(...),
+    transcription: str = Form(""), # 🌟 ICI : Si rien n'est écrit, il mettra du vide sans bloquer
     audioFile: UploadFile = File(...)
 ):
     chemin_temporaire = f"temp_{audioFile.filename}"
     try:
         service = obtenir_service_drive()
         
-        # Sauvegarde temporaire locale de la voix reçue de Vercel
         contenu_audio = await audioFile.read()
         with open(chemin_temporaire, "wb") as f_temp:
             f_temp.write(contenu_audio)
             
-        # Nommage intelligent du fichier audio pour ton Drive (ex: Dakar_Rufisque_Texte_lu_...)
         type_propre = type_parole.split('(')[0].strip().replace(' ', '_')
         nom_fichier_drive = f"{region}_{departement}_{type_propre}_{audioFile.filename}"
         
@@ -118,11 +30,9 @@ async def ajouter_contribution(
         fichier_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         id_fichier = fichier_drive.get('id')
         
-        # Rendre le fichier lisible pour l'exportation future
         service.permissions().create(fileId=id_fichier, body={'type': 'anyone', 'role': 'reader'}).execute()
         lien_audio_direct = f"https://docs.google.com/uc?export=download&id={id_fichier}"
 
-        # Sauvegarde des métadonnées dans le fichier JSON global
         liste_contributions = charger_donnees()
         nouvelle_entree = {
             "id": len(liste_contributions) + 1,
@@ -133,7 +43,7 @@ async def ajouter_contribution(
             "accent": accent,
             "alphabetisation": alphabetisation,
             "type_parole": type_parole,
-            "transcription": transcription,
+            "transcription": transcription, # Sera enregistré vide ou rempli
             "audioUrl": lien_audio_direct
         }
         
@@ -147,6 +57,5 @@ async def ajouter_contribution(
         raise HTTPException(status_code=500, detail=f"Erreur critique du serveur : {str(e)}")
         
     finally:
-        # Nettoyage automatique du fichier temporaire pour ne pas surcharger Render
         if os.path.exists(chemin_temporaire):
             os.remove(chemin_temporaire)
