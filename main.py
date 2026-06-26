@@ -1,61 +1,61 @@
-@app.post("/api/contribuer")
-async def ajouter_contribution(
-    age: int = Form(...),
-    sexe: str = Form(...),
-    region: str = Form(...),
-    departement: str = Form(...),
-    accent: str = Form(...),
-    alphabetisation: str = Form(...),
-    type_parole: str = Form(...),
-    transcription: str = Form(""), # 🌟 ICI : Si rien n'est écrit, il mettra du vide sans bloquer
-    audioFile: UploadFile = File(...)
-):
-    chemin_temporaire = f"temp_{audioFile.filename}"
+# 1. Les imports (tout en haut du fichier)
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import json
+import os
+import csv
+import io
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
+# 2. L'initialisation de l'application
+app = FastAPI(title="Wakhin Wolof - API de Collecte")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+FICHIER_SAUVEGARDE = "collecte_wolof.json"
+
+# 3. Ton ID de dossier Google Drive
+ID_DOSSIER_DRIVE = "1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ"
+
+# 4. C'EST ICI QUE TU METS LA FONCTION ! 
+def obtenir_service_drive():
+    chemin_credentials = "credentials.json"
+    
+    if not os.path.exists(chemin_credentials):
+        raise HTTPException(
+            status_code=500, 
+            detail="Le fichier credentials.json est introuvable."
+        )
+    
+    scopes = ['https://www.googleapis.com/auth/drive']
+    
     try:
-        service = obtenir_service_drive()
+        with open(chemin_credentials, "r", encoding="utf-8") as f:
+            info_credentials = json.load(f)
         
-        contenu_audio = await audioFile.read()
-        with open(chemin_temporaire, "wb") as f_temp:
-            f_temp.write(contenu_audio)
-            
-        type_propre = type_parole.split('(')[0].strip().replace(' ', '_')
-        nom_fichier_drive = f"{region}_{departement}_{type_propre}_{audioFile.filename}"
+        p_key = info_credentials["private_key"].strip().strip('"').strip("'")
+        p_key = p_key.replace("\\n", "\n")
         
-        file_metadata = {
-            'name': nom_fichier_drive,
-            'parents': [ID_DOSSIER_DRIVE]
-        }
+        info_credentials["private_key"] = p_key
         
-        media = MediaFileUpload(chemin_temporaire, mimetype=audioFile.content_type, resumable=True)
-        fichier_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        id_fichier = fichier_drive.get('id')
+        creds = service_account.Credentials.from_service_account_info(info_credentials, scopes=scopes)
+        return build('drive', 'v3', credentials=creds)
         
-        service.permissions().create(fileId=id_fichier, body={'type': 'anyone', 'role': 'reader'}).execute()
-        lien_audio_direct = f"https://docs.google.com/uc?export=download&id={id_fichier}"
-
-        liste_contributions = charger_donnees()
-        nouvelle_entree = {
-            "id": len(liste_contributions) + 1,
-            "age": age,
-            "sexe": sexe,
-            "region": region,
-            "departement": departement,
-            "accent": accent,
-            "alphabetisation": alphabetisation,
-            "type_parole": type_parole,
-            "transcription": transcription, # Sera enregistré vide ou rempli
-            "audioUrl": lien_audio_direct
-        }
-        
-        liste_contributions.append(nouvelle_entree)
-        with open(FICHIER_SAUVEGARDE, "w", encoding="utf-8") as f:
-            json.dump(liste_contributions, f, ensure_ascii=False, indent=4)
-        
-        return nouvelle_entree
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur critique du serveur : {str(e)}")
-        
-    finally:
-        if os.path.exists(chemin_temporaire):
-            os.remove(chemin_temporaire)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur de traitement des credentials : {str(e)}"
+        )
+
+# 5. Les routes commencent juste après (ex: @app.get("/"))
+@app.get("/")
+def home():
+    return {"statut": "Le serveur de thèse fonctionne !"}
