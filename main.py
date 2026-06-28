@@ -12,7 +12,7 @@ from googleapiclient.http import MediaFileUpload
 
 app = FastAPI(title="Wakhin Wolof - API Officielle de Thèse")
 
-# 🌍 Configuration CORS complète pour la liaison avec Vercel
+# Configuration du CORS pour autoriser ton frontend Vercel
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,15 +28,12 @@ def obtenir_service_drive():
     chemin_credentials = "credentials.json"
     if not os.path.exists(chemin_credentials):
         raise HTTPException(status_code=500, detail="Le fichier credentials.json est introuvable.")
-    
     scopes = ['https://www.googleapis.com/auth/drive']
     try:
         with open(chemin_credentials, "r", encoding="utf-8") as f:
             info_credentials = json.load(f)
-        
         p_key = info_credentials["private_key"].strip().strip('"').strip("'").replace("\\n", "\n")
         info_credentials["private_key"] = p_key
-        
         creds = service_account.Credentials.from_service_account_info(info_credentials, scopes=scopes)
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
@@ -49,35 +46,26 @@ def charger_donnees():
             except: return []
     return []
 
-# 🟢 ACCUEILS SÉCURISÉS (Empêche le Not Found sur l'URL de base)
 @app.get("/")
 async def root():
-    return {"statut": "Le serveur backend Wakhin Wolof fonctionne à 100% ! 🇸🇳"}
+    return {"statut": "Le serveur backend Wakhin Wolof fonctionne à 100% sur Render ! 🇸🇳"}
 
-@app.get("/api")
-async def api_root():
-    return {"statut": "L'API de thèse est active ! 🇸🇳"}
-
-# 🟢 EXPORTATION DU CSV MIS À JOUR POUR EXCEL
 @app.get("/api/contributions/csv")
 async def exporter_csv():
     donnees = charger_donnees()
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
-    
     writer.writerow([
         "ID", "Age", "Sexe", "Region", "Departement", 
         "Accent_Regional", "Niveau_Alphabetisation", 
         "Type_Parole", "Texte_Transcription", "Lien_Vocal_Drive"
     ])
-    
     for row in donnees:
         writer.writerow([
             row.get("id"), row.get("age"), row.get("sexe"), row.get("region"),
             row.get("departement"), row.get("accent"), row.get("alphabetisation"),
             row.get("type_parole"), row.get("transcription", ""), row.get("audioUrl")
         ])
-    
     output.seek(0)
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8-sig')),
@@ -85,7 +73,6 @@ async def exporter_csv():
         headers={"Content-Disposition": "attachment; filename=corpus_wakhin_wolof.csv"}
     )
 
-# 🟢 RECEPTION DE L'AUDIO (TRANSCRIPTION FORMELLEMENT FACULTATIVE)
 @app.post("/api/contribuer")
 async def ajouter_contribution(
     age: int = Form(...),
@@ -95,12 +82,13 @@ async def ajouter_contribution(
     accent: str = Form(...),
     alphabetisation: str = Form(...),
     type_parole: str = Form(...),
-    transcription: Optional[str] = Form(""), # Permet de ne rien écrire du tout !
+    transcription: Optional[str] = Form(""), 
     audioFile: UploadFile = File(...)
 ):
     chemin_temporaire = f"temp_{audioFile.filename}"
     try:
-        service =公obtenir_service_drive()
+        # L'appel à la fonction est maintenant totalement propre et corrigé ici !
+        service = obtenir_service_drive()
         
         contenu_audio = await audioFile.read()
         with open(chemin_temporaire, "wb") as f_temp:
@@ -109,11 +97,7 @@ async def ajouter_contribution(
         type_propre = type_parole.split('(')[0].strip().replace(' ', '_')
         nom_fichier_drive = f"{region}_{departement}_{type_propre}_{audioFile.filename}"
         
-        file_metadata = {
-            'name': nom_fichier_drive,
-            'parents': [ID_DOSSIER_DRIVE]
-        }
-        
+        file_metadata = {'name': nom_fichier_drive, 'parents': [ID_DOSSIER_DRIVE]}
         media = MediaFileUpload(chemin_temporaire, mimetype=audioFile.content_type, resumable=True)
         fichier_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         id_fichier = fichier_drive.get('id')
@@ -128,16 +112,11 @@ async def ajouter_contribution(
             "type_parole": type_parole, "transcription": transcription if transcription else "",
             "audioUrl": lien_audio_direct
         }
-        
         liste_contributions.append(nouvelle_entree)
         with open(FICHIER_SAUVEGARDE, "w", encoding="utf-8") as f:
             json.dump(liste_contributions, f, ensure_ascii=False, indent=4)
-        
         return nouvelle_entree
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur critique : {str(e)}")
-        
+        raise HTTPException(status_code=500, detail=f"Erreur : {str(e)}")
     finally:
-        if os.path.exists(chemin_temporaire):
-            os.remove(chemin_temporaire)
+        if os.path.exists(chemin_temporaire): os.remove(chemin_temporaire)
