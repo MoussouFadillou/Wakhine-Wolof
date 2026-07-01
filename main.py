@@ -6,13 +6,29 @@ import json
 import os
 import csv
 import io
-from google.oauth2 import service_account
+
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 app = FastAPI(title="Wakhin Wolof - API Officielle de Thèse")
 
-# Configuration du CORS pour autoriser ton frontend Vercel
+# -----------------------------
+# Configuration
+# -----------------------------
+
+FICHIER_SAUVEGARDE = "collecte_wolof.json"
+CHEMIN_CREDENTIALS = "credentials.json"
+ID_DOSSIER_DRIVE = "1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ"
+
+SCOPES = [
+    "https://www.googleapis.com/auth/drive"
+]
+
+# -----------------------------
+# CORS
+# -----------------------------
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,60 +37,150 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-FICHIER_SAUVEGARDE = "collecte_wolof.json"
-ID_DOSSIER_DRIVE = "1i4Nmu25ja6TQpW0usdxdFXep2bP-NCcJ"
+# -----------------------------
+# Google Drive
+# -----------------------------
 
 def obtenir_service_drive():
-    chemin_credentials = "credentials.json"
-    if not os.path.exists(chemin_credentials):
-        raise HTTPException(status_code=500, detail="Le fichier credentials.json est introuvable.")
-    scopes = ['https://www.googleapis.com/auth/drive']
+
+    if not os.path.exists(CHEMIN_CREDENTIALS):
+        raise HTTPException(
+            status_code=500,
+            detail="Le fichier credentials.json est introuvable."
+        )
+
     try:
-        with open(chemin_credentials, "r", encoding="utf-8") as f:
-            info_credentials = json.load(f)
-        p_key = info_credentials["private_key"].strip().strip('"').strip("'").replace("\\n", "\n")
-        info_credentials["private_key"] = p_key
-        creds = service_account.Credentials.from_service_account_info(info_credentials, scopes=scopes)
-        return build('drive', 'v3', credentials=creds)
+
+        credentials = Credentials.from_service_account_file(
+            CHEMIN_CREDENTIALS,
+            scopes=SCOPES
+        )
+
+        service = build(
+            "drive",
+            "v3",
+            credentials=credentials
+        )
+
+        return service
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur credentials Google : {str(e)}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur Google Drive : {str(e)}"
+        )
+
+# -----------------------------
+# Chargement JSON
+# -----------------------------
 
 def charger_donnees():
+
     if os.path.exists(FICHIER_SAUVEGARDE):
+
         with open(FICHIER_SAUVEGARDE, "r", encoding="utf-8") as f:
-            try: return json.load(f)
-            except: return []
+
+            try:
+                return json.load(f)
+
+            except:
+                return []
+
     return []
+
+# -----------------------------
+# Sauvegarde JSON
+# -----------------------------
+
+def sauvegarder_donnees(data):
+
+    with open(FICHIER_SAUVEGARDE, "w", encoding="utf-8") as f:
+
+        json.dump(
+            data,
+            f,
+            ensure_ascii=False,
+            indent=4
+        )
+
+# -----------------------------
+# Test API
+# -----------------------------
 
 @app.get("/")
 async def root():
-    return {"statut": "Le serveur backend Wakhin Wolof fonctionne à 100% sur Render ! 🇸🇳"}
+
+    return {
+        "status": "OK",
+        "message": "Backend Wakhin Wolof opérationnel."
+    }
+
+# -----------------------------
+# Export CSV
+# -----------------------------
 
 @app.get("/api/contributions/csv")
 async def exporter_csv():
+
     donnees = charger_donnees()
+
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=';')
+
+    writer = csv.writer(output, delimiter=";")
+
     writer.writerow([
-        "ID", "Age", "Sexe", "Region", "Departement", 
-        "Accent_Regional", "Niveau_Alphabetisation", 
-        "Type_Parole", "Texte_Transcription", "Lien_Vocal_Drive"
+        "ID",
+        "Age",
+        "Sexe",
+        "Region",
+        "Departement",
+        "Accent",
+        "Alphabetisation",
+        "Type_Parole",
+        "Transcription",
+        "Lien_Drive"
     ])
+
     for row in donnees:
+
         writer.writerow([
-            row.get("id"), row.get("age"), row.get("sexe"), row.get("region"),
-            row.get("departement"), row.get("accent"), row.get("alphabetisation"),
-            row.get("type_parole"), row.get("transcription", ""), row.get("audioUrl")
+
+            row.get("id"),
+            row.get("age"),
+            row.get("sexe"),
+            row.get("region"),
+            row.get("departement"),
+            row.get("accent"),
+            row.get("alphabetisation"),
+            row.get("type_parole"),
+            row.get("transcription"),
+            row.get("audioUrl")
+
         ])
+
     output.seek(0)
+
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=corpus_wakhin_wolof.csv"}
+
+        headers={
+            "Content-Disposition":
+            "attachment; filename=corpus_wakhin_wolof.csv"
+        }
+
     )
+
+# -----------------------------
+# Contribution
+# -----------------------------
 
 @app.post("/api/contribuer")
 async def ajouter_contribution(
+
     age: int = Form(...),
     sexe: str = Form(...),
     region: str = Form(...),
@@ -82,41 +188,125 @@ async def ajouter_contribution(
     accent: str = Form(...),
     alphabetisation: str = Form(...),
     type_parole: str = Form(...),
-    transcription: Optional[str] = Form(""), 
+    transcription: Optional[str] = Form(""),
     audioFile: UploadFile = File(...)
-):
-    chemin_temporaire = f"temp_{audioFile.filename}"
-    try:
-        # L'appel à la fonction est maintenant totalement propre et corrigé ici !
-        service = obtenir_service_drive()
-        
-        contenu_audio = await audioFile.read()
-        with open(chemin_temporaire, "wb") as f_temp:
-            f_temp.write(contenu_audio)
-            
-        type_propre = type_parole.split('(')[0].strip().replace(' ', '_')
-        nom_fichier_drive = f"{region}_{departement}_{type_propre}_{audioFile.filename}"
-        
-        file_metadata = {'name': nom_fichier_drive, 'parents': [ID_DOSSIER_DRIVE]}
-        media = MediaFileUpload(chemin_temporaire, mimetype=audioFile.content_type, resumable=True)
-        fichier_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        id_fichier = fichier_drive.get('id')
-        
-        service.permissions().create(fileId=id_fichier, body={'type': 'anyone', 'role': 'reader'}).execute()
-        lien_audio_direct = f"https://docs.google.com/uc?export=download&id={id_fichier}"
 
-        liste_contributions = charger_donnees()
-        nouvelle_entree = {
-            "id": len(liste_contributions) + 1, "age": age, "sexe": sexe, "region": region,
-            "departement": departement, "accent": accent, "alphabetisation": alphabetisation,
-            "type_parole": type_parole, "transcription": transcription if transcription else "",
-            "audioUrl": lien_audio_direct
+):
+
+    chemin_temporaire = f"temp_{audioFile.filename}"
+
+    try:
+
+        service = obtenir_service_drive()
+
+        contenu = await audioFile.read()
+
+        with open(chemin_temporaire, "wb") as f:
+
+            f.write(contenu)
+
+        type_propre = (
+            type_parole
+            .split("(")[0]
+            .strip()
+            .replace(" ", "_")
+        )
+
+        nom_drive = (
+            f"{region}_{departement}_{type_propre}_{audioFile.filename}"
+        )
+
+        metadata = {
+
+            "name": nom_drive,
+            "parents": [ID_DOSSIER_DRIVE]
+
         }
-        liste_contributions.append(nouvelle_entree)
-        with open(FICHIER_SAUVEGARDE, "w", encoding="utf-8") as f:
-            json.dump(liste_contributions, f, ensure_ascii=False, indent=4)
-        return nouvelle_entree
+
+        media = MediaFileUpload(
+
+            chemin_temporaire,
+
+            mimetype=audioFile.content_type,
+
+            resumable=True
+
+        )
+
+        fichier = service.files().create(
+
+            body=metadata,
+
+            media_body=media,
+
+            fields="id"
+
+        ).execute()
+
+        file_id = fichier["id"]
+
+        service.permissions().create(
+
+            fileId=file_id,
+
+            body={
+                "type": "anyone",
+                "role": "reader"
+            }
+
+        ).execute()
+
+        lien = f"https://drive.google.com/uc?id={file_id}"
+
+        donnees = charger_donnees()
+
+        nouvelle = {
+
+            "id": len(donnees) + 1,
+
+            "age": age,
+
+            "sexe": sexe,
+
+            "region": region,
+
+            "departement": departement,
+
+            "accent": accent,
+
+            "alphabetisation": alphabetisation,
+
+            "type_parole": type_parole,
+
+            "transcription": transcription,
+
+            "audioUrl": lien
+
+        }
+
+        donnees.append(nouvelle)
+
+        sauvegarder_donnees(donnees)
+
+        return {
+
+            "success": True,
+
+            "message": "Contribution enregistrée.",
+
+            "data": nouvelle
+
+        }
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur : {str(e)}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
     finally:
-        if os.path.exists(chemin_temporaire): os.remove(chemin_temporaire)
+
+        if os.path.exists(chemin_temporaire):
+
+            os.remove(chemin_temporaire)
