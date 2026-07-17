@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "splendid-sonar-502621-n6",
+  "private_key_id": "0c6a41bcf937587ae2c2cd5175e63ddd4150d898",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCuRXpz3XL/n7D7\nxKpurx9NDntvglX/kxRIDyVlD80MeLKDMHol2fTiSqZ8ym+pgj9s1TNG286iXT3P\nmb9mIUmO0i/wSAvSQTNNNT2RWDKBfUvJqg7Fy29MW2jBHVLoNB9sbwZdKZ7zjJ1s\nkAVRno3PLPfPJ5YlxBZ/l0UGmqBy4j4u4g5BOROWQ/x1/oMPuUWQaY35V89HKaVL\nqej9bO+qBzr5aiCnuNbt+kv9G9kyL1j+88UTH0Ub+UiMyoPJVictQ9XhSCADNDCT\niqjoscI9lrjx2xWso2eDF1I4jAX0/yQuo1lP3x3QphNPq6mHuKPTz+SWGyTNxUkL\nc4uFFhiPAgMBAAECggEAUTwu5BK+1/zDHeFjhvvYDe3pySWK2/teEWcKCe2PKjib\nEf9HeRx8A/5DVFlzKqN92EgbwnSVAmePeBXVvBBZPxuoYAvdgtGEzgE65WUlCepz\nqRo+D6KQi5nyn06Bhp9BZKTuZQARSbtq6J/L8uuDdCckjuqHmawpxqkncngiwdoC\nH91mSHuWlVZ+Nozf+shA7tVv0It/MiD7UVjTDw33X8hNO7EdFnHMIoKWVjL/A9nh\n0F34OWlvnmRSRX/64yJ62jjz7ed/OhCAR2O6I1WCnXLn1hBhd8eHyJ7e5mKh+/Uq\nt2cuJ0nMm0smFH7TMP21dw3iTb5+2RngpaerQnuyvQKBgQDj8hvRHf/IbcWBqAnW\nqvQTMsww7JyNBlzGg3HcVgV/OmZXodbrZ24xHwsj+isBSknPcmFyACrhaRMOTBqB\n6sjaJKrOAys0kWmyZuF9uFMhaM7AUnkyzurxuQqWIjJ3wZ/w7cbsqRQfr5738unk\nGr7mcH3KSlHf5xBGXZJEJuUIlQKBgQDDuEBLTxOb35nyyno1y+2raWoj9C4cZFZz\ncSN8cBaoenU7rrSql/VRvChFOKHArIwZDUROslI2zzgxkHUTtpgCrXOtItYwRING\nHlCBa9PbxWmOqwlzAreyb+XqOGr1EiPtmXqORqJ3+a+7OBzXfW80YSj0ZrzKcQok\ntaDyi7+/kwKBgQDZOQHVOJdmc2WCd5ZYojVSjlgUT4eoxOVosB6zcK5wXkDlRe9A\nCiLyYLkHIgIViqvoKwI913cFtFJaj5+7KvkZGVREWrSztddaEbzVR/DAp9ZPZMjm\n6FTw4fv6ssARa811lcK6CS6KO5xsgWru26YMiCr3ufdoPhQ+WjFnDQG6OQKBgCnV\nYCi4pkBS8tzqWmTVSd+xkHZO4uw+phvWuvcGHlG0mwo+tW8hO9ZUmWbyS+CbAPb5\n1vfbNadxc1lkvyGPjb5ExMzk/VMj0ctS/3IqUgZPk9hixopGsmz5bfM6S+JGFlfa\nzk9K2b87J0ylGcUVkodnnRFgREohD0H5cIVnSXzxAoGAdNYjTMbraIsvevupuRdE\nX0iYcIa2sndqHVOXUMDCI//tgWaLzk/oQytyte4piKYCdT8vhISSDcS5dTBYhh5/\nIG0G76kYPHkWoXbZm1gTZkQ8Vum1JIpasEHOBczAgxZ0VcTzRolI0BBxSe408iQI\nyTve2iJFmyN+sD5MPeQUvpU=\n-----END PRIVATE KEY-----\n",
+  "client_email": "wakhin-drive-uploader@splendid-sonar-502621-n6.iam.gserviceaccount.com",
+  "client_id": "112717922552301443203",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/wakhin-drive-uploader%40splendid-sonar-502621-n6.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
