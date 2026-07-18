@@ -1,3 +1,4 @@
+
 import os
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,50 +10,40 @@ import io
 
 app = FastAPI(title="Wakhin Wolof Backend - Production Railway")
 
-# 🇸🇳 Configuration du CORS pour autoriser ton frontend Vercel (ou n'importe quelle source)
+# 🇸🇳 Configuration du CORS pour autoriser ton frontend Vercel à communiquer librement
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permet à ton site Vercel de communiquer librement avec le backend
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 📂 ID du dossier Google Drive partagé (Remplace avec l'ID de ton dossier de thèse si nécessaire)
+# 📂 ID du dossier Google Drive partagé pour ta thèse
 DRIVE_FOLDER_ID = "17oylBfSgSCfuo4xGEyBFOIICtsyjT90h"
 
 def obtenir_service_drive():
-    """Initialise la connexion avec Google Drive en utilisant les variables d'environnement."""
-    client_email = os.getenv("GOOGLE_CLIENT_EMAIL")
-    private_key_raw = os-getenv("GOOGLE_PRIVATE_KEY")
-
-    if not client_email or not private_key_raw:
+    """Initialise la connexion avec Google Drive en utilisant le fichier JSON local."""
+    chemin_credentials = "credentials.json"
+    
+    if not os.path.exists(chemin_credentials):
         raise HTTPException(
             status_code=500, 
-            detail="Configuration manquante sur Railway : GOOGLE_PRIVATE_KEY ou GOOGLE_CLIENT_EMAIL est introuvable."
+            detail="Le fichier credentials.json est introuvable à la racine du projet backend."
         )
 
     try:
-        # 🛡️ Nettoyage magique des doubles antislashs \\n générés par Railway
-        private_key = private_key_raw.replace("\\n", "\n")
-        
-        # Gestion des guillemets accidentels en début/fin de chaîne
-        if private_key.startswith('"') and private_key.endswith('"'):
-            private_key = private_key[1:-1]
-
         scopes = ["https://www.googleapis.com/auth/drive"]
-        creds = service_account.Credentials.from_service_account_info({
-            "type": "service_account",
-            "client_email": client_email,
-            "private_key": private_key,
-            "token_uri": "https://oauth2.googleapis.com/token",
-        }, scopes=scopes)
-        
+        # Utilisation de la méthode officielle pour lire un fichier physique local
+        creds = service_account.Credentials.from_service_account_file(
+            chemin_credentials, 
+            scopes=scopes
+        )
         return build("drive", "v3", credentials=creds)
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur d'initialisation des clés Google : {str(e)}"
+            detail=f"Erreur de lecture ou de signature du fichier credentials.json : {str(e)}"
         )
 
 @app.get("/")
@@ -60,7 +51,7 @@ def home():
     """Route de vérification pour s'assurer que le serveur est bien en ligne."""
     return {
         "status": "OK", 
-        "message": "Backend Wakhin Wolof opérationnel sur Railway."
+        "message": "Backend Wakhin Wolof opérationnel sur Railway avec authentification par fichier."
     }
 
 @app.post("/api/contribuer")
