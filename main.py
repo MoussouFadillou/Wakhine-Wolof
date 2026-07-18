@@ -1,170 +1,70 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+import os
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from typing import Optional
-import json
-import os
-import csv
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 import io
 
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+app = FastAPI(title="Wakhin Wolof Backend - Production Railway")
 
-app = FastAPI(title="Wakhin Wolof - API Officielle de Thèse")
-
-# -----------------------------
-# Configuration
-# -----------------------------
-
-FICHIER_SAUVEGARDE = "collecte_wolof.json"
-ID_DOSSIER_DRIVE = "17oylBfSgSCfuo4xGEyBFOIICtsyjT90h"
-
-SCOPES = [
-    "https://www.googleapis.com/auth/drive"
-]
-
-# -----------------------------
-# CORS (Autorise ton Frontend Vercel)
-# -----------------------------
-
+# 🇸🇳 Configuration du CORS pour autoriser ton frontend Vercel (ou n'importe quelle source)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Permet à ton site Vercel de communiquer librement avec le backend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# -----------------------------
-# Google Drive (Adapté pour Railway)
-# -----------------------------
+# 📂 ID du dossier Google Drive partagé (Remplace avec l'ID de ton dossier de thèse si nécessaire)
+DRIVE_FOLDER_ID = "17oylBfSgSCfuo4xGEyBFOIICtsyjT90h"
 
 def obtenir_service_drive():
-    # Railway va lire ces variables directement depuis son panneau de configuration
-    private_key = os.environ.get("GOOGLE_PRIVATE_KEY")
-    client_email = os.environ.get("GOOGLE_CLIENT_EMAIL")
+    """Initialise la connexion avec Google Drive en utilisant les variables d'environnement."""
+    client_email = os.getenv("GOOGLE_CLIENT_EMAIL")
+    private_key_raw = os-getenv("GOOGLE_PRIVATE_KEY")
 
-    if not private_key or not client_email:
+    if not client_email or not private_key_raw:
         raise HTTPException(
-            status_code=500,
+            status_code=500, 
             detail="Configuration manquante sur Railway : GOOGLE_PRIVATE_KEY ou GOOGLE_CLIENT_EMAIL est introuvable."
         )
 
     try:
-        # Nettoyage automatique des retours à la ligne de la clé privée pour Google
-        clean_key = private_key.strip().strip('"').strip("'").replace("\\n", "\n")
+        # 🛡️ Nettoyage magique des doubles antislashs \\n générés par Railway
+        private_key = private_key_raw.replace("\\n", "\n")
+        
+        # Gestion des guillemets accidentels en début/fin de chaîne
+        if private_key.startswith('"') and private_key.endswith('"'):
+            private_key = private_key[1:-1]
 
-        info_credentials = {
+        scopes = ["https://www.googleapis.com/auth/drive"]
+        creds = service_account.Credentials.from_service_account_info({
             "type": "service_account",
-            "private_key": clean_key,
             "client_email": client_email,
-            "token_uri": "https://oauth2.googleapis.com/token"
-        }
-
-        credentials = Credentials.from_service_account_info(
-            info_credentials,
-            scopes=SCOPES
-        )
-
-        service = build(
-            "drive",
-            "v3",
-            credentials=credentials
-        )
-
-        return service
-
+            "private_key": private_key,
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }, scopes=scopes)
+        
+        return build("drive", "v3", credentials=creds)
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur d'authentification Google Drive : {str(e)}"
+            detail=f"Erreur d'initialisation des clés Google : {str(e)}"
         )
-
-# -----------------------------
-# Chargement JSON
-# -----------------------------
-
-def charger_donnees():
-    if os.path.exists(FICHIER_SAUVEGARDE):
-        with open(FICHIER_SAUVEGARDE, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except:
-                return []
-    return []
-
-# -----------------------------
-# Sauvegarde JSON
-# -----------------------------
-
-def sauvegarder_donnees(data):
-    with open(FICHIER_SAUVEGARDE, "w", encoding="utf-8") as f:
-        json.dump(
-            data,
-            f,
-            ensure_ascii=False,
-            indent=4
-        )
-
-# -----------------------------
-# Test API
-# -----------------------------
 
 @app.get("/")
-async def root():
+def home():
+    """Route de vérification pour s'assurer que le serveur est bien en ligne."""
     return {
-        "status": "OK",
+        "status": "OK", 
         "message": "Backend Wakhin Wolof opérationnel sur Railway."
     }
 
-# -----------------------------
-# Export CSV
-# -----------------------------
-
-@app.get("/api/contributions/csv")
-async def exporter_csv():
-    donnees = charger_donnees()
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";")
-
-    writer.writerow([
-        "ID", "Age", "Sexe", "Region", "Departement",
-        "Accent", "Alphabetisation", "Type_Parole",
-        "Transcription", "Lien_Drive"
-    ])
-
-    for row in donnees:
-        writer.writerow([
-            row.get("id"),
-            row.get("age"),
-            row.get("sexe"),
-            row.get("region"),
-            row.get("departement"),
-            row.get("accent"),
-            row.get("alphabetisation"),
-            row.get("type_parole"),
-            row.get("transcription"),
-            row.get("audioUrl")
-        ])
-
-    output.seek(0)
-
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition":
-            "attachment; filename=corpus_wakhin_wolof.csv"
-        }
-    )
-
-# -----------------------------
-# Contribution
-# -----------------------------
-
 @app.post("/api/contribuer")
-async def ajouter_contribution(
+async def contribuer(
     age: int = Form(...),
     sexe: str = Form(...),
     region: str = Form(...),
@@ -172,89 +72,118 @@ async def ajouter_contribution(
     accent: str = Form(...),
     alphabetisation: str = Form(...),
     type_parole: str = Form(...),
-    transcription: Optional[str] = Form(""),
+    transcription: str = Form(None),
     audioFile: UploadFile = File(...)
 ):
-    chemin_temporaire = f"temp_{audioFile.filename}"
-
+    """Reçoit l'audio et les métadonnées du frontend, et les envoie sur Google Drive."""
     try:
         service = obtenir_service_drive()
-        contenu = await audioFile.read()
+    except HTTPException as he:
+        raise he
 
-        with open(chemin_temporaire, "wb") as f:
-            f.write(contenu)
+    # 1. Lecture du fichier audio en mémoire
+    audio_content = await audioFile.read()
+    nom_fichier_audio = audioFile.filename
 
-        type_propre = (
-            type_parole
-            .split("(")[0]
-            .strip()
-            .replace(" ", "_")
-        )
+    # 2. Préparation de la description texte (les métadonnées stockées dans la description du fichier sur Drive)
+    texte_metadonnees = (
+        f"Age: {age}\n"
+        f"Sexe: {sexe}\n"
+        f"Region: {region}\n"
+        f"Departement: {departement}\n"
+        f"Accent: {accent}\n"
+        f"Alphabetisation: {alphabetisation}\n"
+        f"Type de parole: {type_parole}\n"
+        f"Transcription: {transcription or ''}"
+    )
 
-        nom_drive = (
-            f"{region}_{departement}_{type_propre}_{audioFile.filename}"
-        )
+    # 3. Envoi du fichier audio sur Google Drive
+    metadata_audio = {
+        "name": nom_fichier_audio,
+        "description": texte_metadonnees,
+        "parents": [DRIVE_FOLDER_ID]
+    }
+    
+    media_audio = MediaIoBaseUpload(
+        io.BytesIO(audio_content), 
+        mimetype="audio/wav", 
+        chunksize=1024*1024, 
+        resumable=True
+    )
 
-        metadata = {
-            "name": nom_drive,
-            "parents": [ID_DOSSIER_DRIVE]
-        }
-
-        media = MediaFileUpload(
-            chemin_temporaire,
-            mimetype=audioFile.content_type,
-            resumable=True
-        )
-
-        fichier = service.files().create(
-            body=metadata,
-            media_body=media,
+    try:
+        fichier_cree = service.files().create(
+            body=metadata_audio, 
+            media_body=media_audio, 
             fields="id"
         ).execute()
-
-        file_id = fichier["id"]
-
-        service.permissions().create(
-            fileId=file_id,
-            body={
-                "type": "anyone",
-                "role": "reader"
-            }
-        ).execute()
-
-        # Lien optimisé pour le streaming audio direct
-        lien = f"https://docs.google.com/uc?export=download&id={file_id}"
-
-        donnees = charger_donnees()
-
-        nouvelle = {
-            "id": len(donnees) + 1,
-            "age": age,
-            "sexe": sexe,
-            "region": region,
-            "departement": department if 'department' in locals() else departement,
-            "accent": accent,
-            "alphabetisation": alphabetisation,
-            "type_parole": type_parole,
-            "transcription": transcription if transcription else "",
-            "audioUrl": lien
-        }
-
-        donnees.append(nouvelle)
-        sauvegarder_donnees(donnees)
-
+        
         return {
-            "success": True,
-            "message": "Contribution enregistrée.",
-            "data": nouvelle
+            "status": "Succès",
+            "message": "Données et fichier audio enregistrés avec succès sur Google Drive !",
+            "file_id": fichier_cree.get("id")
         }
-
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=f"Erreur lors du transfert vers Google Drive : {str(e)}"
         )
 
-    finally:
-        if os.path.exists(chemin_temporaire):
-            os.remove(chemin_temporaire)
+@app.get("/api/contributions/csv")
+async def telecharger_csv():
+    """Génère dynamiquement un fichier CSV de toutes les contributions présentes dans le dossier Drive."""
+    try:
+        service = obtenir_service_drive()
+        
+        # Récupération de la liste des fichiers dans le dossier Drive
+        requete = f"'{DRIVE_FOLDER_ID}' in parents and trashed = false"
+        resultats = service.files().list(
+            q=requete, 
+            fields="files(id, name, description, createdTime)",
+            pageSize=1000
+        ).execute()
+        
+        fichiers = resultats.get("files", [])
+        
+        # Création du contenu CSV en mémoire
+        output = io.StringIO()
+        output.write("Fichier_Audio;Date_Creation;Age;Sexe;Region;Departement;Accent;Alphabetisation;Type_Parole;Transcription\n")
+        
+        for f in fichiers:
+            nom = f.get("name", "")
+            date_c = f.get("createdTime", "")
+            desc = f.get("description", "")
+            
+            # Extraction basique des lignes de la description
+            meta = {}
+            if desc:
+                for ligne in desc.split("\n"):
+                    if ":" in ligne:
+                        cle, val = ligne.split(":", 1)
+                        meta[cle.strip()] = val.strip()
+            
+            age_val = meta.get("Age", "")
+            sexe_val = meta.get("Sexe", "")
+            reg_val = meta.get("Region", "")
+            dep_val = meta.get("Departement", "")
+            acc_val = meta.get("Accent", "")
+            alpha_val = meta.get("Alphabetisation", "")
+            type_p = meta.get("Type de parole", "")
+            trans = meta.get("Transcription", "").replace("\n", " ").replace(";", ",")
+            
+            output.write(f"{nom};{date_c};{age_val};{sexe_val};{reg_val};{dep_val};{acc_val};{alpha_val};{type_p};{trans}\n")
+            
+        csv_content = output.getvalue()
+        output.close()
+        
+        return StreamingResponse(
+            io.BytesIO(csv_content.encode("utf-8-sig")),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=contributions_wolof.csv"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur lors de la génération du fichier CSV : {str(e)}"
+        )
