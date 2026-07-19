@@ -1,4 +1,5 @@
 import os
+import json
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -22,7 +23,7 @@ app.add_middleware(
 DRIVE_FOLDER_ID = "17oylBfSgSCfuo4xGEyBFOIICtsyjT90h"
 
 def obtenir_service_drive():
-    """Initialise la connexion avec Google Drive en utilisant le fichier JSON local et une tolérance de temps."""
+    """Charge le JSON local, nettoie la clé en mémoire et crée la connexion Google Drive."""
     chemin_credentials = "credentials.json"
     
     if not os.path.exists(chemin_credentials):
@@ -32,22 +33,33 @@ def obtenir_service_drive():
         )
 
     try:
+        # 1. Lire le fichier JSON manuellement
+        with open(chemin_credentials, "r", encoding="utf-8") as f:
+            info_cles = json.load(f)
+            
+        # 2. 🛡️ NETTOYAGE ULTIME : On remplace les chaînes '\\n' par de vrais sauts de ligne '\n'
+        if "private_key" in info_cles:
+            info_cles["private_key"] = info_cles["private_key"].replace("\\n", "\n")
+            # Enlever les guillemets superflus si présents en début/fin
+            if info_cles["private_key"].startswith('"') and info_cles["private_key"].endswith('"'):
+                info_cles["private_key"] = info_cles["private_key"][1:-1]
+
         scopes = ["https://www.googleapis.com/auth/drive"]
         
-        # 1. Charger les identifiants depuis le fichier physique
-        creds = service_account.Credentials.from_service_account_file(
-            chemin_credentials, 
+        # 3. Créer les identifiants à partir du dictionnaire nettoyé
+        creds = service_account.Credentials.from_service_account_info(
+            info_cles, 
             scopes=scopes
         )
         
-        # 2. 🛡️ Compensation du décalage horaire éventuel du conteneur de production
+        # 4. Tolérance horaire pour le serveur
         creds = creds.with_adjusted_token_uri_lifetime(60)
         
         return build("drive", "v3", credentials=creds)
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur de lecture ou de signature du fichier credentials.json : {str(e)}"
+            detail=f"Erreur lors du décodage ou de la signature JWT : {str(e)}"
         )
 
 @app.get("/")
@@ -55,7 +67,7 @@ def home():
     """Route de vérification pour s'assurer que le serveur est bien en ligne."""
     return {
         "status": "OK", 
-        "message": "Backend Wakhin Wolof opérationnel sur Railway avec tolérance horaire active."
+        "message": "Backend Wakhin Wolof opérationnel avec nettoyage JSON en mémoire actif."
     }
 
 @app.post("/api/contribuer")
@@ -80,7 +92,7 @@ async def contribuer(
     audio_content = await audioFile.read()
     nom_fichier_audio = audioFile.filename
 
-    # 2. Préparation de la description texte (les métadonnées stockées dans la description du fichier sur Drive)
+    # 2. Préparation de la description texte
     texte_metadonnees = (
         f"Age: {age}\n"
         f"Sexe: {sexe}\n"
