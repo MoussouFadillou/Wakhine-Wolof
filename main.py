@@ -1,4 +1,3 @@
-
 import os
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +22,7 @@ app.add_middleware(
 DRIVE_FOLDER_ID = "17oylBfSgSCfuo4xGEyBFOIICtsyjT90h"
 
 def obtenir_service_drive():
-    """Initialise la connexion avec Google Drive en utilisant le fichier JSON local."""
+    """Initialise la connexion avec Google Drive en utilisant le fichier JSON local et une tolérance de temps."""
     chemin_credentials = "credentials.json"
     
     if not os.path.exists(chemin_credentials):
@@ -34,11 +33,16 @@ def obtenir_service_drive():
 
     try:
         scopes = ["https://www.googleapis.com/auth/drive"]
-        # Utilisation de la méthode officielle pour lire un fichier physique local
+        
+        # 1. Charger les identifiants depuis le fichier physique
         creds = service_account.Credentials.from_service_account_file(
             chemin_credentials, 
             scopes=scopes
         )
+        
+        # 2. 🛡️ Compensation du décalage horaire éventuel du conteneur de production
+        creds = creds.with_adjusted_token_uri_lifetime(60)
+        
         return build("drive", "v3", credentials=creds)
     except Exception as e:
         raise HTTPException(
@@ -51,7 +55,7 @@ def home():
     """Route de vérification pour s'assurer que le serveur est bien en ligne."""
     return {
         "status": "OK", 
-        "message": "Backend Wakhin Wolof opérationnel sur Railway avec authentification par fichier."
+        "message": "Backend Wakhin Wolof opérationnel sur Railway avec tolérance horaire active."
     }
 
 @app.post("/api/contribuer")
