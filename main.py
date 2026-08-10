@@ -1,4 +1,3 @@
-
 import csv
 import io
 import os
@@ -21,41 +20,40 @@ from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
 from models import Contribution
-
 from google_drive import uploader_audio
 
 
-# ============================================================
+# =====================================================
 # CONFIGURATION
-# ============================================================
+# =====================================================
 
 APP_NAME = "Wakhin Wolof API"
-
 APP_VERSION = "3.0.0"
 
 FRONTEND_URL = os.getenv(
     "FRONTEND_URL",
-    "https://wakhine-wolof-frontend-qfq4.vercel.app",
+    "https://wakhine-wolof-frontend-qfq4.vercel.app"
 )
 
 
-# ============================================================
+# =====================================================
 # DATABASE
-# ============================================================
+# =====================================================
 
 try:
     Base.metadata.create_all(bind=engine)
-    print("✅ PostgreSQL : connexion initialisée")
+    print("✅ PostgreSQL initialisé")
+
 except Exception as error:
     print(
-        "❌ Erreur lors de l'initialisation PostgreSQL :",
-        error,
+        "❌ Erreur PostgreSQL :",
+        error
     )
 
 
-# ============================================================
+# =====================================================
 # FASTAPI
-# ============================================================
+# =====================================================
 
 app = FastAPI(
     title=APP_NAME,
@@ -67,26 +65,15 @@ app = FastAPI(
 )
 
 
-# ============================================================
+# =====================================================
 # CORS
-# ============================================================
+# =====================================================
 
-origins = []
-
-if FRONTEND_URL:
-    origins = [
-        url.strip().rstrip("/")
-        for url in FRONTEND_URL.split(",")
-        if url.strip()
-    ]
-
-# Autoriser également le frontend Vercel connu
-default_frontend = (
-    "https://wakhine-wolof-frontend-qfq4.vercel.app"
-)
-
-if default_frontend not in origins:
-    origins.append(default_frontend)
+origins = [
+    url.strip()
+    for url in FRONTEND_URL.split(",")
+    if url.strip()
+]
 
 
 app.add_middleware(
@@ -98,67 +85,60 @@ app.add_middleware(
 )
 
 
-# ============================================================
-# FONCTIONS UTILITAIRES
-# ============================================================
+# =====================================================
+# UTILITAIRES
+# =====================================================
 
-def nettoyer_nom(nom: str) -> str:
-    """
-    Nettoie une chaîne pour créer un nom de fichier propre.
-    """
+def nettoyer_nom(nom: str):
 
     nom = nom.strip()
 
     nom = re.sub(
-        r"[^a-zA-Z0-9À-ÿ_ -]",
+        r"[^a-zA-Z0-9À-ÿ_-]",
         "",
-        nom,
+        nom
     )
 
-    nom = re.sub(
-        r"\s+",
-        "_",
-        nom,
+    return nom.replace(
+        " ",
+        "_"
     )
 
-    return nom
 
-
-def obtenir_extension_audio(
-    content_type: str,
-    filename: str | None,
-) -> str:
+def extension_audio(
+    content_type,
+    filename
+):
 
     if content_type:
+
         if "webm" in content_type:
             return ".webm"
-
-        if "ogg" in content_type:
-            return ".ogg"
 
         if "wav" in content_type:
             return ".wav"
 
-        if "mpeg" in content_type:
-            return ".mp3"
+        if "ogg" in content_type:
+            return ".ogg"
 
-        if "mp4" in content_type:
-            return ".m4a"
 
     if filename:
-        extension = os.path.splitext(
-            filename
-        )[1].lower()
 
-        if extension:
-            return extension
+        ext = os.path.splitext(
+            filename
+        )[1]
+
+        if ext:
+            return ext
+
 
     return ".webm"
 
 
-# ============================================================
-# ROUTE RACINE
-# ============================================================
+
+# =====================================================
+# ROUTES TEST
+# =====================================================
 
 @app.get("/")
 def root():
@@ -166,35 +146,28 @@ def root():
     return {
         "status": "OK",
         "service": "wakhin-wolof-api",
-        "version": APP_VERSION,
-        "message": (
-            "Backend Wakhin Wolof "
-            "opérationnel."
-        ),
+        "version": APP_VERSION
     }
 
 
-# ============================================================
-# HEALTH CHECK
-# ============================================================
 
 @app.get("/health")
 def health():
 
     return {
         "status": "healthy",
-        "service": "wakhin-wolof-api",
         "database": "PostgreSQL",
-        "storage": "Google Drive",
+        "storage": "Google Drive"
     }
 
 
-# ============================================================
-# AJOUTER UNE CONTRIBUTION
-# ============================================================
+
+# =====================================================
+# AJOUT CONTRIBUTION
+# =====================================================
 
 @app.post("/api/contribuer")
-async def ajouter_contribution(
+async def contribuer(
 
     age: int = Form(...),
 
@@ -214,164 +187,61 @@ async def ajouter_contribution(
 
     audioFile: UploadFile = File(...),
 
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 
 ):
 
-    print("")
-    print("=" * 70)
-    print("📥 NOUVELLE CONTRIBUTION")
-    print("=" * 70)
+    print("📥 Nouvelle contribution")
 
-    # ========================================================
-    # VALIDATION DES DONNÉES
-    # ========================================================
 
     if age < 1 or age > 120:
 
         raise HTTPException(
-            status_code=400,
-            detail=(
-                "L'âge doit être compris "
-                "entre 1 et 120 ans."
-            ),
+            400,
+            "Age invalide"
         )
 
-    if not sexe.strip():
 
-        raise HTTPException(
-            status_code=400,
-            detail="Le sexe est obligatoire.",
-        )
+    contenu = await audioFile.read()
 
-    if not region.strip():
-
-        raise HTTPException(
-            status_code=400,
-            detail="La région est obligatoire.",
-        )
-
-    if not departement.strip():
-
-        raise HTTPException(
-            status_code=400,
-            detail="Le département est obligatoire.",
-        )
-
-    if not accent.strip():
-
-        raise HTTPException(
-            status_code=400,
-            detail="L'accent régional est obligatoire.",
-        )
-
-    if not alphabetisation.strip():
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Le niveau d'alphabétisation "
-                "est obligatoire."
-            ),
-        )
-
-    if not type_parole.strip():
-
-        raise HTTPException(
-            status_code=400,
-            detail="Le type de parole est obligatoire.",
-        )
-
-    # ========================================================
-    # LECTURE AUDIO
-    # ========================================================
-
-    try:
-
-        contenu = await audioFile.read()
-
-    except Exception as error:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Impossible de lire le fichier audio : "
-                f"{error}"
-            ),
-        )
 
     if not contenu:
 
         raise HTTPException(
-            status_code=400,
-            detail="Le fichier audio est vide.",
+            400,
+            "Audio vide"
         )
 
-    print(
-        f"🎙️ Audio reçu : "
-        f"{len(contenu) / 1024:.2f} Ko"
-    )
-
-    # ========================================================
-    # TYPE AUDIO
-    # ========================================================
 
     content_type = (
         audioFile.content_type
         or "audio/webm"
     )
 
-    print(
-        f"🎵 Type audio : {content_type}"
-    )
-
-    extension = obtenir_extension_audio(
-        content_type,
-        audioFile.filename,
-    )
-
-    # ========================================================
-    # NOM DU FICHIER
-    # ========================================================
-
-    region_propre = nettoyer_nom(
-        region
-    )
-
-    departement_propre = nettoyer_nom(
-        departement
-    )
-
-    type_propre = nettoyer_nom(
-        type_parole.split("(")[0]
-    )
-
-    timestamp = datetime.utcnow().strftime(
-        "%Y%m%d_%H%M%S"
-    )
 
     nom_fichier = (
-        f"wolof_"
-        f"{region_propre}_"
-        f"{departement_propre}_"
-        f"{type_propre}_"
-        f"{timestamp}_"
-        f"{extension}"
+
+        "wolof_"
+        + nettoyer_nom(region)
+        + "_"
+        + nettoyer_nom(departement)
+        + "_"
+        + datetime.utcnow().strftime(
+            "%Y%m%d_%H%M%S"
+        )
+        + extension_audio(
+            content_type,
+            audioFile.filename
+        )
+
     )
 
-    print(
-        f"📁 Nom fichier : {nom_fichier}"
-    )
 
-    # ========================================================
+    # ==============================
     # GOOGLE DRIVE
-    # ========================================================
+    # ==============================
 
     try:
-
-        print(
-            "☁️ Upload vers Google Drive..."
-        )
 
         file_id, audio_url = uploader_audio(
 
@@ -379,84 +249,58 @@ async def ajouter_contribution(
 
             nom_fichier=nom_fichier,
 
-            content_type=content_type,
+            content_type=content_type
 
         )
 
         print(
-            "✅ Google Drive : upload réussi"
+            "✅ Audio Drive OK"
         )
 
-        print(
-            f"📌 File ID : {file_id}"
-        )
-
-        print(
-            f"🔗 URL : {audio_url}"
-        )
 
     except Exception as error:
 
         print(
-            "❌ ERREUR GOOGLE DRIVE"
+            "❌ Drive erreur:",
+            error
         )
-
-        print(error)
-
-        db.rollback()
 
         raise HTTPException(
-
-            status_code=500,
-
-            detail=(
-                "L'audio n'a pas pu être "
-                "enregistré dans Google Drive. "
-                f"Détail : {str(error)}"
-            ),
+            500,
+            str(error)
         )
 
-    # ========================================================
+
+    # ==============================
     # POSTGRESQL
-    # ========================================================
+    # ==============================
 
     try:
-
-        print(
-            "🗄️ Enregistrement PostgreSQL..."
-        )
 
         contribution = Contribution(
 
             age=age,
 
-            sexe=sexe.strip(),
+            sexe=sexe,
 
-            region=region.strip(),
+            region=region,
 
-            departement=departement.strip(),
+            departement=departement,
 
-            accent=accent.strip(),
+            accent=accent,
 
-            alphabetisation=(
-                alphabetisation.strip()
-            ),
+            alphabetisation=alphabetisation,
 
-            type_parole=(
-                type_parole.strip()
-            ),
+            type_parole=type_parole,
 
-            transcription=(
-                transcription.strip()
-                if transcription
-                else ""
-            ),
+            transcription=transcription,
 
             audio_url=audio_url,
 
-            google_drive_file_id=file_id,
+            google_drive_file_id=file_id
 
         )
+
 
         db.add(
             contribution
@@ -468,244 +312,137 @@ async def ajouter_contribution(
             contribution
         )
 
-        print(
-            "✅ PostgreSQL : contribution enregistrée"
-        )
 
         print(
-            f"🆔 ID contribution : "
-            f"{contribution.id}"
+            "✅ PostgreSQL OK"
         )
+
 
     except Exception as error:
 
         db.rollback()
 
         print(
-            "❌ ERREUR POSTGRESQL"
+            "❌ PostgreSQL erreur:",
+            error
         )
-
-        print(error)
 
         raise HTTPException(
-
-            status_code=500,
-
-            detail=(
-                "L'audio a été envoyé vers "
-                "Google Drive mais les "
-                "métadonnées n'ont pas pu être "
-                "enregistrées dans PostgreSQL. "
-                f"Détail : {str(error)}"
-            ),
+            500,
+            str(error)
         )
 
-    # ========================================================
-    # RÉPONSE
-    # ========================================================
+
 
     return {
 
         "success": True,
 
-        "message": (
-            "Contribution enregistrée "
-            "avec succès."
-        ),
+        "message":
+        "Contribution enregistrée",
 
-        "data": {
+        "id":
+        contribution.id,
 
-            "id": contribution.id,
+        "audio_url":
+        audio_url
 
-            "age": contribution.age,
-
-            "sexe": contribution.sexe,
-
-            "region": contribution.region,
-
-            "departement": (
-                contribution.departement
-            ),
-
-            "accent": contribution.accent,
-
-            "alphabetisation": (
-                contribution.alphabetisation
-            ),
-
-            "type_parole": (
-                contribution.type_parole
-            ),
-
-            "transcription": (
-                contribution.transcription
-            ),
-
-            "audioUrl": (
-                contribution.audio_url
-            ),
-
-            "googleDriveFileId": (
-                contribution.google_drive_file_id
-            ),
-
-            "created_at": (
-                str(contribution.created_at)
-                if contribution.created_at
-                else None
-            ),
-        },
     }
 
 
-# ============================================================
+
+# =====================================================
 # EXPORT CSV
-# ============================================================
+# =====================================================
 
 @app.get("/api/contributions/csv")
-def exporter_csv(
+def export_csv(
 
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 
 ):
 
-    try:
+    contributions = (
 
-        print(
-            "📥 Export CSV demandé"
+        db.query(
+            Contribution
         )
 
-        contributions = (
-
-            db.query(
-                Contribution
-            )
-
-            .order_by(
-                Contribution.id.asc()
-            )
-
-            .all()
+        .order_by(
+            Contribution.id
         )
 
-        output = io.StringIO()
+        .all()
 
-        writer = csv.writer(
-            output,
-            delimiter=";",
-            quoting=csv.QUOTE_MINIMAL,
-        )
+    )
 
-        # ====================================================
-        # TOUTES LES COLONNES
-        # ====================================================
+
+    output = io.StringIO()
+
+
+    writer = csv.writer(
+        output,
+        delimiter=";"
+    )
+
+
+    writer.writerow([
+
+        "ID",
+        "Age",
+        "Sexe",
+        "Region",
+        "Departement",
+        "Accent",
+        "Alphabetisation",
+        "Type_Parole",
+        "Transcription",
+        "Audio_URL",
+        "Google_Drive_File_ID",
+        "Date"
+
+    ])
+
+
+
+    for c in contributions:
 
         writer.writerow([
 
-            "ID",
-
-            "Age",
-
-            "Sexe",
-
-            "Region",
-
-            "Departement",
-
-            "Accent",
-
-            "Alphabetisation",
-
-            "Type_Parole",
-
-            "Transcription",
-
-            "Audio_URL",
-
-            "Google_Drive_File_ID",
-
-            "Date_Creation",
+            c.id,
+            c.age,
+            c.sexe,
+            c.region,
+            c.departement,
+            c.accent,
+            c.alphabetisation,
+            c.type_parole,
+            c.transcription,
+            c.audio_url,
+            c.google_drive_file_id,
+            c.created_at
 
         ])
 
-        # ====================================================
-        # DONNÉES
-        # ====================================================
 
-        for contribution in contributions:
 
-            writer.writerow([
+    output.seek(0)
 
-                contribution.id,
 
-                contribution.age,
+    return StreamingResponse(
 
-                contribution.sexe,
+        io.BytesIO(
+            output.getvalue()
+            .encode("utf-8-sig")
+        ),
 
-                contribution.region,
+        media_type="text/csv",
 
-                contribution.departement,
+        headers={
 
-                contribution.accent,
+            "Content-Disposition":
+            "attachment; filename=corpus_wolof.csv"
 
-                contribution.alphabetisation,
+        }
 
-                contribution.type_parole,
-
-                contribution.transcription,
-
-                contribution.audio_url,
-
-                contribution.google_drive_file_id,
-
-                contribution.created_at,
-
-            ])
-
-        output.seek(0)
-
-        fichier = io.BytesIO(
-            output.getvalue().encode(
-                "utf-8-sig"
-            )
-        )
-
-        print(
-            f"✅ CSV généré : "
-            f"{len(contributions)} contributions"
-        )
-
-        return StreamingResponse(
-
-            fichier,
-
-            media_type="text/csv; charset=utf-8",
-
-            headers={
-
-                "Content-Disposition":
-                    "attachment; "
-                    "filename="
-                    "corpus_wakhin_wolof.csv"
-
-            },
-        )
-
-    except Exception as error:
-
-        print(
-            "❌ ERREUR EXPORT CSV"
-        )
-
-        print(error)
-
-        raise HTTPException(
-
-            status_code=500,
-
-            detail=(
-                "Impossible de générer "
-                f"le fichier CSV : {str(error)}"
-            ),
-        )
-```
+    )
