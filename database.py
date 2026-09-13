@@ -1,20 +1,17 @@
 import os
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-
 if not DATABASE_URL:
     raise RuntimeError(
-        "DATABASE_URL est absente dans Railway"
+        "DATABASE_URL est absente dans Render"
     )
 
-
-# Correction ancienne URL Railway
+# Compatibilité avec les anciennes URLs PostgreSQL
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace(
         "postgres://",
@@ -22,12 +19,10 @@ if DATABASE_URL.startswith("postgres://"):
         1
     )
 
-
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True
 )
-
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -35,16 +30,13 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-
 Base = declarative_base()
 
 
 def get_db():
-
     db = SessionLocal()
 
     try:
         yield db
-
     finally:
         db.close()
