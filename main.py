@@ -1,8 +1,16 @@
-import os
 import csv
 import io
+import os
 
-from fastapi import FastAPI, Depends, File, Form, UploadFile, HTTPException
+from fastapi import (
+    FastAPI,
+    Depends,
+    File,
+    Form,
+    UploadFile,
+    HTTPException
+)
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -26,7 +34,7 @@ FRONTEND_URL = os.getenv(
 
 
 # ============================================================
-# APPLICATION FASTAPI
+# APPLICATION
 # ============================================================
 
 app = FastAPI(
@@ -53,27 +61,37 @@ app.add_middleware(
 
 
 # ============================================================
-# INITIALISATION DE LA BASE DE DONNÉES
+# INITIALISATION POSTGRESQL
 # ============================================================
 
 try:
-    Base.metadata.create_all(bind=engine)
-    print("PostgreSQL initialisé avec succès.")
-except Exception as e:
-    print(f"Erreur initialisation PostgreSQL : {e}")
+
+    Base.metadata.create_all(
+        bind=engine
+    )
+
+    print(
+        "PostgreSQL initialisé avec succès."
+    )
+
+except Exception as error:
+
+    print(
+        f"Erreur PostgreSQL : {error}"
+    )
 
 
 # ============================================================
-# ROUTE RACINE
+# ROUTE PRINCIPALE
 # ============================================================
 
 @app.get("/")
 def root():
+
     return {
         "message": "Wakhin Wolof API",
         "version": APP_VERSION,
-        "status": "online",
-        "frontend": FRONTEND_URL
+        "status": "online"
     }
 
 
@@ -83,6 +101,7 @@ def root():
 
 @app.get("/health")
 def health():
+
     return {
         "status": "healthy",
         "database": "PostgreSQL",
@@ -91,7 +110,7 @@ def health():
 
 
 # ============================================================
-# CONTRIBUTION
+# CONTRIBUER
 # ============================================================
 
 @app.post("/api/contribuer")
@@ -107,27 +126,29 @@ async def contribuer(
     audioFile: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """
-    Reçoit une contribution depuis le frontend.
 
-    1. Vérifie les données
-    2. Envoie l'audio vers Google Drive
-    3. Enregistre les métadonnées dans PostgreSQL
-    """
+    print(
+        "=========================================="
+    )
 
-    # --------------------------------------------------------
-    # VALIDATION ÂGE
-    # --------------------------------------------------------
+    print(
+        "Nouvelle contribution reçue."
+    )
+
+    # ========================================================
+    # VALIDATION AGE
+    # ========================================================
 
     if age < 1 or age > 120:
+
         raise HTTPException(
             status_code=400,
             detail="L'âge doit être compris entre 1 et 120 ans."
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # VALIDATION DES CHAMPS
-    # --------------------------------------------------------
+    # ========================================================
 
     champs = {
         "sexe": sexe,
@@ -139,83 +160,110 @@ async def contribuer(
     }
 
     for nom, valeur in champs.items():
+
         if not valeur or not valeur.strip():
+
             raise HTTPException(
                 status_code=400,
                 detail=f"Le champ '{nom}' est obligatoire."
             )
 
-    # --------------------------------------------------------
+    # ========================================================
     # VALIDATION AUDIO
-    # --------------------------------------------------------
+    # ========================================================
 
-    if not audioFile:
+    if audioFile is None:
+
         raise HTTPException(
             status_code=400,
             detail="Le fichier audio est obligatoire."
         )
 
     if not audioFile.filename:
+
         raise HTTPException(
             status_code=400,
             detail="Le nom du fichier audio est invalide."
         )
 
-    # --------------------------------------------------------
-    # ENVOI VERS GOOGLE DRIVE
-    # --------------------------------------------------------
+    print(
+        f"Fichier reçu : {audioFile.filename}"
+    )
+
+    print(
+        f"Type audio : {audioFile.content_type}"
+    )
+
+    # ========================================================
+    # LECTURE DU FICHIER AUDIO
+    # ========================================================
 
     try:
+
+        contenu_audio = await audioFile.read()
+
+    except Exception as error:
+
         print(
-            f"Réception audio : "
-            f"{audioFile.filename}"
+            f"Erreur lecture audio : {error}"
         )
 
-        print("Envoi de l'audio vers Google Drive...")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Impossible de lire le fichier audio : "
+                f"{error}"
+            )
+        )
 
-        drive_result = await uploader_audio(audioFile)
+    if not contenu_audio:
 
-        print("Audio envoyé vers Google Drive.")
+        raise HTTPException(
+            status_code=400,
+            detail="Le fichier audio est vide."
+        )
 
-    except Exception as e:
+    print(
+        f"Taille audio : {len(contenu_audio)} octets"
+    )
+
+    # ========================================================
+    # GOOGLE DRIVE
+    # ========================================================
+
+    try:
+
         print(
-            f"Erreur Google Drive : {e}"
+            "Envoi vers Google Drive..."
+        )
+
+        file_id, audio_url = uploader_audio(
+            contenu_audio,
+            audioFile.filename,
+            audioFile.content_type or "audio/webm"
+        )
+
+        print(
+            f"Google Drive OK : {file_id}"
+        )
+
+    except Exception as error:
+
+        print(
+            f"Erreur Google Drive : {error}"
         )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                "Erreur lors de l'envoi de l'audio "
-                f"vers Google Drive : {str(e)}"
+                "Erreur lors de l'envoi vers Google Drive : "
+                f"{error}"
             )
         )
 
-    # --------------------------------------------------------
-    # RÉCUPÉRATION DES INFORMATIONS GOOGLE DRIVE
-    # --------------------------------------------------------
-
-    audio_url = None
-    google_drive_file_id = None
-
-    if isinstance(drive_result, dict):
-        audio_url = (
-            drive_result.get("audio_url")
-            or drive_result.get("webViewLink")
-            or drive_result.get("url")
-        )
-
-        google_drive_file_id = (
-            drive_result.get("google_drive_file_id")
-            or drive_result.get("file_id")
-            or drive_result.get("id")
-        )
-
-    elif isinstance(drive_result, str):
-        audio_url = drive_result
-
-    # --------------------------------------------------------
-    # ENREGISTREMENT DANS POSTGRESQL
-    # --------------------------------------------------------
+    # ========================================================
+    # POSTGRESQL
+    # ========================================================
 
     try:
 
@@ -229,24 +277,29 @@ async def contribuer(
             type_parole=type_parole.strip(),
             transcription=transcription.strip(),
             audio_url=audio_url,
-            google_drive_file_id=google_drive_file_id
+            google_drive_file_id=file_id
         )
 
-        db.add(contribution)
+        db.add(
+            contribution
+        )
+
         db.commit()
-        db.refresh(contribution)
+
+        db.refresh(
+            contribution
+        )
 
         print(
-            f"Contribution enregistrée : "
-            f"{contribution.id}"
+            f"PostgreSQL OK : contribution {contribution.id}"
         )
 
-    except Exception as e:
+    except Exception as error:
 
         db.rollback()
 
         print(
-            f"Erreur PostgreSQL : {e}"
+            f"Erreur PostgreSQL : {error}"
         )
 
         raise HTTPException(
@@ -254,20 +307,28 @@ async def contribuer(
             detail=(
                 "L'audio a été envoyé vers Google Drive, "
                 "mais l'enregistrement PostgreSQL a échoué : "
-                f"{str(e)}"
+                f"{error}"
             )
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # RÉPONSE
-    # --------------------------------------------------------
+    # ========================================================
+
+    print(
+        "Contribution terminée avec succès."
+    )
+
+    print(
+        "=========================================="
+    )
 
     return {
         "success": True,
         "message": "Contribution enregistrée avec succès.",
         "id": contribution.id,
         "audio_url": audio_url,
-        "google_drive_file_id": google_drive_file_id
+        "google_drive_file_id": file_id
     }
 
 
@@ -284,7 +345,9 @@ def exporter_contributions_csv(
 
         contributions = (
             db.query(Contribution)
-            .order_by(Contribution.created_at.desc())
+            .order_by(
+                Contribution.created_at.desc()
+            )
             .all()
         )
 
@@ -338,24 +401,27 @@ def exporter_contributions_csv(
         output.seek(0)
 
         return StreamingResponse(
-            iter([output.getvalue()]),
+            iter([
+                output.getvalue()
+            ]),
             media_type="text/csv",
             headers={
                 "Content-Disposition":
-                    "attachment; filename=corpus_wakhin_wolof.csv"
+                    "attachment; "
+                    "filename=corpus_wakhin_wolof.csv"
             }
         )
 
-    except Exception as e:
+    except Exception as error:
 
         print(
-            f"Erreur export CSV : {e}"
+            f"Erreur export CSV : {error}"
         )
 
         raise HTTPException(
             status_code=500,
             detail=(
                 "Erreur lors de l'export CSV : "
-                f"{str(e)}"
+                f"{error}"
             )
         )
