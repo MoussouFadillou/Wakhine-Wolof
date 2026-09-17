@@ -50,7 +50,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://wakhine-wolof-frontend-qfq4-1jjvbeluo-moussoufadillous-projects.vercel.app",
+       
         FRONTEND_URL,
     ],
     allow_credentials=False,
