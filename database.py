@@ -1,42 +1,52 @@
-import os
+from supabase_client import supabase
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+TABLE = "contributions"
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+def create_contribution(
+    age,
+    sexe,
+    region,
+    departement,
+    accent,
+    alphabetisation,
+    type_parole,
+    transcription,
+    audio_path,
+    audio_filename,
+    audio_content_type,
+):
+    data = {
+        "age": age,
+        "sexe": sexe,
+        "region": region,
+        "departement": departement,
+        "accent": accent,
+        "alphabetisation": alphabetisation,
+        "type_parole": type_parole,
+        "transcription": transcription or None,
+        "audio_path": audio_path,
+        "audio_filename": audio_filename,
+        "audio_content_type": audio_content_type,
+    }
 
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL est absente dans Render"
+    response = supabase.table(TABLE).insert(data).execute()
+
+    if not response.data:
+        raise RuntimeError(
+            "La contribution n'a pas été enregistrée."
+        )
+
+    return response.data[0]
+
+
+def list_all_contributions():
+    response = (
+        supabase
+        .table(TABLE)
+        .select("*")
+        .order("created_at", desc=True)
+        .execute()
     )
 
-# Compatibilité avec les anciennes URLs PostgreSQL
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace(
-        "postgres://",
-        "postgresql://",
-        1
-    )
-
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True
-)
-
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
-
-Base = declarative_base()
-
-
-def get_db():
-    db = SessionLocal()
-
-    try:
-        yield db
-    finally:
-        db.close()
+    return response.data or []
