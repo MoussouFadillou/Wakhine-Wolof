@@ -1,16 +1,24 @@
 import os
 from supabase import Client, create_client
 
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
+
 
 if not SUPABASE_URL:
-    raise RuntimeError("SUPABASE_URL est absente.")
+    raise RuntimeError(
+        "SUPABASE_URL est absente de Render."
+    )
 
-if not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY est absente.")
+
+if not SUPABASE_SECRET_KEY:
+    raise RuntimeError(
+        "SUPABASE_SECRET_KEY est absente de Render."
+    )
+
 
 supabase: Client = create_client(
     SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY
+    SUPABASE_SECRET_KEY
 )
