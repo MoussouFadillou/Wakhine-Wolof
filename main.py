@@ -64,7 +64,7 @@ status_code=400,
 detail="L'âge doit être compris entre 1 et 120."
 )
 
-```
+
 fields = {
     "sexe": sexe,
     "region": region,
@@ -130,7 +130,7 @@ return {
     "contribution": row,
     "audio_path": audio_path
 }
-```
+
 
 @app.get("/api/contributions/csv")
 def contributions_csv(
@@ -142,7 +142,6 @@ status_code=500,
 detail="ADMIN_TOKEN n'est pas configuré sur Render."
 )
 
-```
 if x_admin_token != ADMIN_TOKEN:
     raise HTTPException(
         status_code=401,
@@ -197,4 +196,4 @@ return Response(
         'attachment; filename="corpus_wakhin_wolof.csv"'
     }
 )
-```
+
