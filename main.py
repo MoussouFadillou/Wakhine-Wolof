@@ -11,14 +11,11 @@ from database import create_contribution, list_all_contributions
 from storage import upload_audio
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
 app = FastAPI(
     title="Wakhin Wolof API",
     version="6.0.0"
 )
+
 
 FRONTEND_URL = os.getenv(
     "FRONTEND_URL",
@@ -27,10 +24,6 @@ FRONTEND_URL = os.getenv(
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
-
-# ============================================================
-# CORS
-# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,24 +34,14 @@ app.add_middleware(
 )
 
 
-# ============================================================
-# PAGE D'ACCUEIL
-# ============================================================
-
 @app.get("/")
 def root():
     return {
         "status": "ok",
         "service": "Wakhin Wolof API",
-        "version": "6.0.0",
-        "storage": "Supabase Storage",
-        "database": "Supabase"
+        "version": "6.0.0"
     }
 
-
-# ============================================================
-# TEST DU SERVEUR
-# ============================================================
 
 @app.get("/health")
 def health():
@@ -69,10 +52,6 @@ def health():
         "storage": "Supabase Storage"
     }
 
-
-# ============================================================
-# ENREGISTRER UNE CONTRIBUTION
-# ============================================================
 
 @app.post("/api/contribuer")
 async def contribuer(
@@ -87,44 +66,37 @@ async def contribuer(
     audioFile: UploadFile = File(...)
 ):
 
-    # --------------------------------------------------------
-    # Vérification de l'âge
-    # --------------------------------------------------------
-
     if age < 1 or age > 120:
         raise HTTPException(
             status_code=400,
             detail="L'âge doit être compris entre 1 et 120."
         )
 
-    # --------------------------------------------------------
-    # Vérification des champs
-    # --------------------------------------------------------
+    if not sexe.strip():
+        raise HTTPException(status_code=400, detail="Le sexe est obligatoire.")
 
-    fields = {
-        "sexe": sexe,
-        "region": region,
-        "departement": departement,
-        "accent": accent,
-        "alphabetisation": alphabetisation,
-        "type_parole": type_parole
-    }
+    if not region.strip():
+        raise HTTPException(status_code=400, detail="La région est obligatoire.")
 
-    for field, value in fields.items():
-        if not value or not value.strip():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Le champ {field} est obligatoire."
-            )
-
-    # --------------------------------------------------------
-    # Vérification du fichier audio
-    # --------------------------------------------------------
-
-    if not audioFile:
+    if not departement.strip():
         raise HTTPException(
             status_code=400,
-            detail="Aucun fichier audio reçu."
+            detail="Le département est obligatoire."
+        )
+
+    if not accent.strip():
+        raise HTTPException(status_code=400, detail="L'accent est obligatoire.")
+
+    if not alphabetisation.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="L'alphabétisation est obligatoire."
+        )
+
+    if not type_parole.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Le type de parole est obligatoire."
         )
 
     content = await audioFile.read()
@@ -138,26 +110,17 @@ async def contribuer(
     filename = audioFile.filename or "audio.wav"
     content_type = audioFile.content_type or "audio/wav"
 
-    # --------------------------------------------------------
-    # Upload audio vers Supabase Storage
-    # --------------------------------------------------------
-
     try:
         audio_path = upload_audio(
-            content=content,
-            original_name=filename,
-            content_type=content_type
+            content,
+            filename,
+            content_type
         )
-
-    except Exception as exc:
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur lors de l'enregistrement audio : {exc}"
+            detail=f"Erreur Supabase Storage : {str(e)}"
         )
-
-    # --------------------------------------------------------
-    # Enregistrement des métadonnées dans Supabase
-    # --------------------------------------------------------
 
     try:
         row = create_contribution(
@@ -173,16 +136,11 @@ async def contribuer(
             audio_filename=filename,
             audio_content_type=content_type
         )
-
-    except Exception as exc:
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur lors de l'enregistrement des données : {exc}"
+            detail=f"Erreur Supabase Database : {str(e)}"
         )
-
-    # --------------------------------------------------------
-    # Réponse
-    # --------------------------------------------------------
 
     return {
         "success": True,
@@ -192,18 +150,10 @@ async def contribuer(
     }
 
 
-# ============================================================
-# EXPORT CSV — ADMIN UNIQUEMENT
-# ============================================================
-
 @app.get("/api/contributions/csv")
 def contributions_csv(
-    x_admin_token: str | None = Header(default=None)
+    x_admin_token: str = Header(default="")
 ):
-
-    # --------------------------------------------------------
-    # Vérification du ADMIN_TOKEN
-    # --------------------------------------------------------
 
     if not ADMIN_TOKEN:
         raise HTTPException(
@@ -217,24 +167,13 @@ def contributions_csv(
             detail="Code administrateur incorrect."
         )
 
-    # --------------------------------------------------------
-    # Récupération des contributions
-    # --------------------------------------------------------
-
     try:
         rows = list_all_contributions()
-
-    except Exception as exc:
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur lors de la récupération des contributions : {exc}"
+            detail=f"Erreur récupération données : {str(e)}"
         )
-
-    # --------------------------------------------------------
-    # Création du CSV
-    # --------------------------------------------------------
-
-    output = io.StringIO()
 
     fields = [
         "id",
@@ -252,6 +191,8 @@ def contributions_csv(
         "created_at"
     ]
 
+    output = io.StringIO()
+
     writer = csv.DictWriter(
         output,
         fieldnames=fields,
@@ -266,10 +207,6 @@ def contributions_csv(
             for field in fields
         })
 
-    # --------------------------------------------------------
-    # Téléchargement du fichier
-    # --------------------------------------------------------
-
     return Response(
         content=output.getvalue(),
         media_type="text/csv; charset=utf-8",
@@ -279,54 +216,3 @@ def contributions_csv(
         }
     )
 ```
-
-### Après avoir remplacé `main.py`
-
-Fais seulement ces 4 étapes :
-
-1. **Enregistre `main.py`.**
-2. Envoie la modification sur GitHub.
-3. Dans Render, fais **Manual Deploy → Deploy latest commit**.
-4. Attends que le statut soit **Deployed**.
-
-Puis ouvre :
-
-```text
-https://TON-URL-RENDER/health
-```
-
-Le résultat doit maintenant être :
-
-```json
-{
-  "status": "healthy",
-  "service": "wakhin-wolof-api",
-  "database": "Supabase",
-  "storage": "Supabase Storage"
-}
-```
-
-### ⚠️ Important
-
-Pour que ce `main.py` fonctionne, ton dossier `backend` doit aussi contenir :
-
-```text
-backend/
-├── main.py
-├── database.py
-├── storage.py
-├── supabase_client.py
-├── requirements.txt
-└── .python-version
-```
-
-Et `requirements.txt` :
-
-```text
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
-supabase==2.15.0
-```
-
-**Ne modifie rien d'autre maintenant.** Une fois le nouveau déploiement terminé, teste `/health`.
